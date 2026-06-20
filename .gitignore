@@ -1,11 +1,15 @@
-﻿# 忽略配置文件（包含敏感的 Key 或 Token）
-config.py
-.env
+﻿# Python 编译缓存
+__pycache__/
+*.pyc
 
-# 忽略测试截图和本地识别缓存
+# 打包产物 (绝对不能上传)
+build/
+dist/
+*.spec
+
+# 运行时产生的临时截图 (不上传)
 assets/temp/
-*.jpg
-*.png
 
-# 保留 assets 下的模板基准图，但不保留临时截图
-!assets/template_*.png
+# 隐藏的环境配置
+.env
+.venv

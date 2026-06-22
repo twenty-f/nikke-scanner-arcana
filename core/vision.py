@@ -2,92 +2,105 @@ import cv2
 import numpy as np
 import os
 
-def cv_imread(file_path):
-    """⭐️ 专治各种 OpenCV 不支持中文路径的绝招"""
-    # 先用 numpy 按字节读取，再让 OpenCV 解码，完美绕过中文路径报错
-    img = cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), cv2.IMREAD_COLOR)
-    return img
-
-def find_image(main_img_path, template_path, threshold=0.8, show_result=False):
+def find_image(screen, template_target, threshold=0.75, show_result=False):
     """
-    视觉核心：寻找目标
-    :param template_path: 可以是一个具体图片路径，也可以是一个头像文件夹路径
+    通用多尺度图像识别模块（终极版）：
+    1. 中文路径免乱码机制
+    2. 多尺度动态扫描抗分辨率形变
+    3. ⭐️ 原生支持【文件夹多模板盲扫】！
     """
-    if not os.path.exists(main_img_path):
-        print("⚠️ 找不到主图文件，请检查路径！")
+    # 1. 解析屏幕截图
+    if isinstance(screen, str):
+        if not os.path.exists(screen) or os.path.isdir(screen):
+            return None
+        screen = cv2.imdecode(np.fromfile(screen, dtype=np.uint8), cv2.IMREAD_COLOR)
+        
+    if screen is None:
+        return None
+        
+    # 2. 转换为灰度图 (针对截屏只需要做一次，节约算力)
+    try:
+        if len(screen.shape) == 3:
+            gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        else:
+            gray_screen = screen
+    except Exception as e:
+        print(f"⚠️ 屏幕灰度转换失败: {e}")
         return None
 
-    # 如果 template_path 是文件夹，则进行多模板盲扫
-    if os.path.isdir(template_path):
-        return _multi_template_match(main_img_path, template_path, threshold)
+    # ==============================================================
+    # ⭐️ 核心升级：构建待匹配模板池 (智能识别是文件还是文件夹)
+    # ==============================================================
+    templates_to_check = []
     
-    # 否则，走之前的单图匹配逻辑
-    if not os.path.exists(template_path):
-        print(f"⚠️ 找不到目标图片: {template_path}，请检查！")
-        return None
-    return _single_template_match(main_img_path, template_path, threshold, show_result)
-
-def _single_template_match(main_img_path, template_img_path, threshold, show_result):
-    # ⭐️ 替换为支持中文的读取方式
-    main_img = cv_imread(main_img_path)
-    template = cv_imread(template_img_path)
-    
-    # 防御性编程：防止图片损坏或读取失败导致 NoneType 报错
-    if main_img is None or template is None:
-        return None
-
-    h, w = template.shape[:2]
-
-    result = cv2.matchTemplate(main_img, template, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
-    if max_val >= threshold:
-        if show_result:
-            top_left = max_loc
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-            cv2.rectangle(main_img, top_left, bottom_right, (0, 0, 255), 2)
-            cv2.imshow("Match Result (Press any key to close)", main_img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-            
-        return max_loc, w, h
+    if os.path.isdir(template_target):
+        # 如果传入的是角色文件夹，提取里面所有的图片
+        for file_name in os.listdir(template_target):
+            if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                templates_to_check.append(os.path.join(template_target, file_name))
+        if not templates_to_check:
+            print(f"⚠️ 警告：文件夹 {template_target} 中没有任何图片！")
+            return None
+    elif os.path.exists(template_target):
+        # 如果传入的是单张图片，直接放入池子
+        templates_to_check.append(template_target)
     else:
         return None
 
-def _multi_template_match(main_img_path, template_dir, threshold):
-    """⭐️ 核心升级：文件夹盲扫多皮肤逻辑"""
-    skin_files = [f for f in os.listdir(template_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
-    
-    if not skin_files:
-        return None
-        
-    best_match = None
-    max_best_val = -1.0
-    
-    # 挨个皮肤试一遍
-    for skin in skin_files:
-        full_skin_path = os.path.join(template_dir, skin)
-        result = _single_template_match(main_img_path, full_skin_path, threshold, show_result=False)
-        
-        if result:
-            # ⭐️ 同样替换为支持中文的读取方式
-            main_img = cv_imread(main_img_path)
-            template = cv_imread(full_skin_path)
+    global_best_match = None
+
+    # ==============================================================
+    # 3. 遍历所有模板，执行多尺度扫描大乱斗
+    # ==============================================================
+    for t_path in templates_to_check:
+        template = cv2.imdecode(np.fromfile(t_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if template is None:
+            continue
             
-            if main_img is None or template is None:
+        try:
+            if len(template.shape) == 3:
+                gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            else:
+                gray_template = template
+        except:
+            continue
+
+        # 对当前这张图片进行 20 次动态缩放盲扫
+        for scale in np.linspace(0.4, 1.5, 20):
+            width = int(gray_template.shape[1] * scale)
+            height = int(gray_template.shape[0] * scale)
+            
+            # 尺寸合理性校验
+            if width > gray_screen.shape[1] or height > gray_screen.shape[0] or width == 0 or height == 0:
                 continue
-
-            res = cv2.matchTemplate(main_img, template, cv2.TM_CCOEFF_NORMED)
-            _, current_val, _, _ = cv2.minMaxLoc(res)
-            
-            if current_val > max_best_val:
-                max_best_val = current_val
-                best_match = result
                 
-    if best_match:
-        print(f"✨ 多模板盲扫：成功匹配到【{os.path.basename(template_dir)}】的皮肤图片，最佳匹配度: {max_best_val:.2f}")
-        return best_match
-    return None
+            resized_template = cv2.resize(gray_template, (width, height))
+            result = cv2.matchTemplate(gray_screen, resized_template, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            
+            # 只要发现得分更高的，就刷新全场最高分记录
+            if global_best_match is None or max_val > global_best_match['max_val']:
+                global_best_match = {
+                    'max_val': max_val,
+                    'max_loc': max_loc,
+                    'width': width,
+                    'height': height,
+                    'scale': scale,
+                    'file_name': os.path.basename(t_path)
+                }
 
-if __name__ == "__main__":
-    pass
+    # ==============================================================
+    # 4. 最终裁决
+    # ==============================================================
+    if global_best_match and global_best_match['max_val'] >= threshold:
+        # 如果需要打印日志，这行代码会告诉你到底命中了哪个皮肤、缩放了多少倍
+        if show_result:
+            pass # 保持静默，因为你的 main_loop.py 似乎有自己的打印逻辑
+        
+        # 你的日志里出现过 "✨ 多模板盲扫：成功匹配到【尼恩：蓝色海洋】的皮肤图片"，
+        # 为了找回那种感觉，我在这里加一句内部打印：
+        print(f"✨ 视觉模块底层回报：命中【{global_best_match['file_name']}】 | 缩放: {global_best_match['scale']:.2f}x | 相似度: {global_best_match['max_val']:.2f}")
+        
+        return (global_best_match['max_loc'], global_best_match['width'], global_best_match['height'])
+        
+    return None

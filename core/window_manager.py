@@ -5,9 +5,15 @@ import win32api
 import ctypes
 import time
 
+# ⭐️ 核心修复：强行唤醒 Python 的系统级 DPI 感知能力，获取跨屏最真实的物理像素
+try:
+    ctypes.windll.user32.SetProcessDPIAware()
+except:
+    pass
+
 def force_bring_to_front(window_title="胜利女神：新的希望"):
     """
-    终极窗口抢占逻辑：绕过 Windows 限制，强制将游戏拉到最前 (安全隔离版)
+    终极窗口抢占逻辑：带原生多显示器追踪、屏幕内居中、DPI感知和权限提权的强化版
     """
     print(f"🔍 正在系统进程中搜索: 【{window_title}】...")
     hwnd = win32gui.FindWindow(None, window_title)
@@ -18,54 +24,111 @@ def force_bring_to_front(window_title="胜利女神：新的希望"):
 
     print("🎯 锁定目标窗口，正在强制接管显示器焦点...")
     
-    # 引入 Windows 底层 API
     user32 = ctypes.windll.user32
-    
-    # 获取当前 Python 脚本的线程 ID 和游戏窗口的线程 ID
     current_thread = win32api.GetCurrentThreadId()
     window_thread, _ = win32process.GetWindowThreadProcessId(hwnd)
 
-    # 1. ⭐️ 隔离全局配置修改：即使拒绝访问，也绝不影响后续核心置顶流程
+    # 1. 解除焦点锁定
     try:
-        win32gui.SystemParametersInfo(win32con.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, win32con.SPIF_SENDWININICHANGE | win32con.SPIF_UPDATEINIFILE)
+        win32gui.SystemParametersInfo(
+            win32con.SPI_SETFOREGROUNDLOCKTIMEOUT, 
+            0, 
+            win32con.SPIF_SENDWININICHANGE | win32con.SPIF_UPDATEINIFILE
+        )
     except Exception:
-        # 静默跳过，普通权限运行程序时通常会走到这里
         pass
 
     try:
-        # 2. 将当前脚本的输入处理机制“挂载”到游戏窗口上
+        # 2. 挂载线程并唤醒窗口
         user32.AttachThreadInput(current_thread, window_thread, True)
-
-        # 3. 检查窗口状态，如果是最小化则还原，否则直接显示
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         else:
             win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            
+        # ==============================================================
+        # ⭐️ 核心升级：原生多显示器追踪与当前屏幕居中对齐
+        # ==============================================================
+        rect = win32gui.GetWindowRect(hwnd)
+        left, top, right, bottom = rect
+        width = right - left
+        height = bottom - top
         
-        # 4. 把窗口拔高到最顶层（TOPMOST），然后再取消最顶层状态，确保它能越过所有其他软件
-        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-        
-        # 5. 正式设置为前台活动窗口
+        try:
+            # 智能探测：获取当前窗口所在的那个具体显示器的句柄 (MONITOR_DEFAULTTONEAREST)
+            monitor_handle = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+            # 获取该显示器的具体信息（包括副屏的负坐标偏移和专属分辨率）
+            monitor_info = win32api.GetMonitorInfo(monitor_handle)
+            # 提取该显示器的工作区（已扣除该屏幕上的任务栏）
+            screen_l, screen_t, screen_r, screen_b = monitor_info['Work']
+        except Exception as e:
+            print(f"⚠️ 多显示器探测失败，退回主屏幕模式: {e}")
+            work_area = win32gui.SystemParametersInfo(win32con.SPI_GETWORKAREA)
+            screen_l, screen_t, screen_r, screen_b = work_area
+
+        screen_width = screen_r - screen_l
+        screen_height = screen_b - screen_t
+
+        # 核心算法：以当前屏幕的左上角 (screen_l, screen_t) 为基准进行居中偏移
+        # 完美兼容副屏的负坐标系统！
+        center_x = screen_l + (screen_width - width) // 2
+        center_y = screen_t + (screen_height - height) // 2
+
+        if abs(left - center_x) > 5 or abs(top - center_y) > 5:
+            print(f"🧲 正在将游戏客户端强制校准至【当前所在屏幕】的正中心...")
+            win32gui.SetWindowPos(
+                hwnd, 0, center_x, center_y, 0, 0, 
+                win32con.SWP_NOZORDER | win32con.SWP_NOSIZE
+            )
+            time.sleep(0.6) 
+        # ==============================================================
+
+        # 3. 顶层越权与前台设置
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, 
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
+        )
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, 
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
+        )
         win32gui.SetForegroundWindow(hwnd)
 
     except Exception as e:
-        print(f"⚠️ 核心置顶流程发生底层调用异常: {e}，尝试启用键盘唤醒备用方案...")
-        # 备用方案：模拟按下 Alt 键唤醒系统焦点感知
+        print(f"⚠️ 核心置顶流程发生底层异常: {e}")
         import pydirectinput
         pydirectinput.press('alt')
         try:
             win32gui.SetForegroundWindow(hwnd)
-        except Exception as e_alt:
-             print(f"⚠️ 备用置顶方案也失败了: {e_alt}")
+        except:
+            pass
         
     finally:
-        # 6. 解除线程挂载
         try:
             user32.AttachThreadInput(current_thread, window_thread, False)
         except:
             pass
         
-    time.sleep(1.5) # 给画面渲染和切换留出时间
-    print("✅ 窗口接管尝试完成！准备执行后续操作。")
+    time.sleep(1.5) 
+    print("✅ 窗口位置校验通过！已接管显示焦点。")
     return True
+
+def get_window_rect(window_title="胜利女神：新的希望"):
+    """
+    获取目标窗口在整个跨屏虚拟桌面上的真实绝对坐标
+    """
+    hwnd = win32gui.FindWindow(None, window_title)
+    if not hwnd:
+        return None
+        
+    try:
+        rect = win32gui.GetWindowRect(hwnd)
+        left = rect[0]
+        top = rect[1]
+        width = rect[2] - rect[0]
+        height = rect[3] - rect[1]
+        
+        return (left, top, width, height)
+    except Exception as e:
+        print(f"⚠️ 获取窗口尺寸失败: {e}")
+        return None

@@ -1,5 +1,6 @@
 import os
 import sys
+import keyboard
 import threading
 import webbrowser
 import time
@@ -8,6 +9,17 @@ from main_loop import start_main_auto_flow
 from core.updater import check_and_update_avatars
 # ⭐️ 这里已经修正为最新的 force_bring_to_front
 from core.window_manager import force_bring_to_front
+
+# ==============================================================
+# 🚨 全局紧急停止开关：任何时候按下 F12，瞬间击杀整个 Python 进程
+# ==============================================================
+def emergency_stop():
+    print("\n\n🛑 [EMERGENCY STOP] 接收到 F12 急停指令！正在强制切断系统电源...")
+    os._exit(0) # 物理级终结进程，立刻释放键鼠
+
+keyboard.add_hotkey('f12', emergency_stop)
+print("🛡️ 安全系统已上线：随时可按【F12】键紧急中止脚本！")
+# ==============================================================
 
 def get_resource_path(relative_path):
     try:

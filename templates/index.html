@@ -2,198 +2,245 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>NIKKE SCANNER // COMMAND CENTER</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nikke Scanner Arcana</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        :root {
-            --bg-color: #050505;
-            --text-main: #F2F2F2;
-            --accent-red: #D91A2A;
-            --accent-blue: #1A4BD9;
-            --border-color: #333;
+        /* 自定义微调与动画效果 */
+        body { 
+            background-color: #f8fafc; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
         }
+        
+        /* 隐藏滚动条但保留滚动功能，让界面更清爽 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 40px;
-            text-transform: uppercase;
+        /* 左侧导航栏高亮状态 */
+        .nav-item { transition: all 0.2s ease; }
+        .nav-item.active { 
+            color: #ef4444; /* 妮姬红 */
+            background-color: #fef2f2; 
+            border-right: 3px solid #ef4444; 
         }
+        .nav-item:hover:not(.active) { background-color: #f1f5f9; }
 
-        .header {
-            border-bottom: 4px solid var(--accent-red);
-            margin-bottom: 30px;
-            padding-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-        }
-
-        h1 {
-            margin: 0;
-            font-size: 2.5rem;
-            letter-spacing: 4px;
-            color: var(--accent-red);
-        }
-
-        .subtitle {
-            color: var(--accent-blue);
-            font-weight: bold;
-            letter-spacing: 2px;
-        }
-
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-
-        .char-card {
-            background-color: #111;
-            border: 2px solid var(--border-color);
-            padding: 15px;
-            text-align: center;
+        /* 角色卡片交互动画 */
+        .char-card { 
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
             cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .char-card:hover { 
+            transform: translateY(-4px); 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); 
+        }
+        .char-card.selected { 
+            border-color: #ef4444; 
+            background-color: #fef2f2; 
+        }
+        /* 选中状态的勾选角标 */
+        .check-badge {
+            opacity: 0;
+            transform: scale(0.5);
             transition: all 0.2s ease;
-            position: relative;
         }
-
-        .char-card img {
-            width: 100px;
-            height: 100px;
-            object-fit: cover;
-            margin-bottom: 10px;
-            border: 1px solid #333;
-        }
-
-        .char-card .name {
-            font-weight: bold;
-            letter-spacing: 1px;
-        }
-
-        /* 选中状态 */
-        .char-card.selected {
-            border-color: var(--accent-red);
-            background-color: rgba(217, 26, 42, 0.1);
-            box-shadow: 0 0 15px rgba(217, 26, 42, 0.3);
-        }
-
-        .char-card.selected::after {
-            content: "TARGET";
-            position: absolute;
-            top: -10px;
-            right: -10px;
-            background: var(--accent-red);
-            color: white;
-            font-size: 12px;
-            padding: 2px 6px;
-            font-weight: bold;
-        }
-
-        .execute-btn {
-            background-color: var(--accent-red);
-            color: var(--text-main);
-            border: none;
-            padding: 20px 50px;
-            font-size: 1.5rem;
-            font-weight: bold;
-            letter-spacing: 5px;
-            cursor: pointer;
-            width: 100%;
-            transition: background 0.2s;
-        }
-
-        .execute-btn:hover {
-            background-color: #ff1e32;
-        }
-
-        .execute-btn:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-            color: #888;
-        }
-
-        #status-msg {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 1.2rem;
-            color: var(--accent-blue);
-            min-height: 30px;
+        .char-card.selected .check-badge {
+            opacity: 1;
+            transform: scale(1);
         }
     </style>
 </head>
-<body>
+<body class="flex h-screen overflow-hidden text-slate-800">
 
-    <div class="header">
-        <h1>SCANNER SYSTEM</h1>
-        <div class="subtitle">SELECT TARGETS FOR INSPECTION</div>
-    </div>
-
-    <div class="grid-container" id="char-grid">
-        {% for char in characters %}
-        <div class="char-card" data-name="{{ char.name }}" onclick="toggleSelect(this)">
-            <img src="/assets/avatars/{{ char.name }}/{{ char.cover }}" alt="{{ char.name }}">
-            <div class="name">{{ char.name }}</div>
+    <nav class="w-20 md:w-48 bg-white border-r border-slate-200 flex flex-col items-center md:items-start py-6 shadow-sm z-20">
+        <div class="px-0 md:px-6 mb-8 w-full flex justify-center md:justify-start items-center">
+            <div class="w-10 h-10 bg-red-500 rounded-xl text-white flex items-center justify-center font-bold text-xl shadow-md">A</div>
+            <span class="hidden md:block ml-3 font-extrabold text-lg text-slate-800 tracking-tight">Arcana</span>
         </div>
-        {% endfor %}
-    </div>
+        
+        <button class="nav-item active w-full px-0 md:px-6 py-4 flex flex-col md:flex-row items-center justify-center md:justify-start gap-2">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            <span class="text-xs md:text-sm font-medium mt-1 md:mt-0">主页</span>
+        </button>
+        <button class="nav-item w-full px-0 md:px-6 py-4 flex flex-col md:flex-row items-center justify-center md:justify-start gap-2 text-slate-500">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span class="text-xs md:text-sm font-medium mt-1 md:mt-0">偏好设置</span>
+        </button>
+    </nav>
 
-    <button class="execute-btn" id="start-btn" onclick="startScan()" disabled>EXECUTE SCAN_</button>
-    <div id="status-msg"></div>
+    <main class="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50 relative">
+        
+        <div class="mx-6 mt-6 mb-8 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-900 p-8 text-white shadow-lg relative overflow-hidden flex items-center justify-between">
+            <div class="relative z-10">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">Arcana Bot</span>
+                    <span class="text-slate-300 text-sm">V1.0 - OTA Enabled</span>
+                </div>
+                <h1 class="text-3xl font-bold mb-2">妮姬 T10 装备扫描终端</h1>
+                <p class="text-slate-300 max-w-md text-sm">选择目标干员，终端将自动接管游戏画面，执行装备全量扫描，并云端同步至中枢。</p>
+                <a href="https://github.com/twenty-f/nikke-scanner-arcana" target="_blank" class="mt-5 inline-flex items-center bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium backdrop-blur-sm transition">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    GitHub Repo
+                </a>
+            </div>
+            <div class="hidden lg:block opacity-20 pointer-events-none absolute right-[-50px] top-[-50px]">
+                <svg width="300" height="300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
+            </div>
+        </div>
+
+        <div class="px-6 pb-32">
+            <div class="flex justify-between items-end mb-6 border-b border-slate-200 pb-3">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800">扫描队列 <span class="text-slate-400 font-normal text-sm ml-2" id="selected-count">0/0 已选</span></h2>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="selectAll()" class="text-sm text-slate-500 hover:text-slate-800 transition px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-md">全选</button>
+                    <button onclick="clearAll()" class="text-sm text-slate-500 hover:text-slate-800 transition px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-md">清空</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4" id="character-grid">
+                {% for char in characters %}
+                <div class="char-card bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-3 relative shadow-sm" data-name="{{ char.name }}" onclick="toggleSelection(this)">
+                    <div class="check-badge absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md z-10">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-slate-100 shadow-inner">
+                        {% if char.cover %}
+                        <img src="/assets/avatars/{{ char.name }}/{{ char.cover }}" alt="{{ char.name }}" class="w-full h-full object-cover">
+                        {% else %}
+                        <div class="w-full h-full bg-slate-200 flex items-center justify-center text-xl font-bold text-slate-400">{{ char.name[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <span class="text-sm font-semibold text-slate-700 text-center line-clamp-1 w-full">{{ char.name }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="fixed bottom-0 left-0 md:left-48 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 px-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-20">
+            <div class="flex flex-col xl:flex-row items-start xl:items-center gap-2 xl:gap-6 w-full sm:w-auto">
+                <div class="flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span class="text-sm font-medium text-slate-600">系统就绪，等待执行指令</span>
+                </div>
+                
+                <div class="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200 shadow-inner animate-fade-in animate-duration-300">
+                    <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <span>安全熔断：运行期间若鼠标出现失控、强关浏览器等紧急情况，请迅速按下键盘 【F12】 键强行自毁中止！</span>
+                </div>
+            </div>
+            
+            <button id="execute-btn" disabled class="bg-slate-300 text-slate-400 px-8 py-3 rounded-full font-bold transition flex items-center gap-2 cursor-not-allowed shrink-0 w-full sm:w-auto justify-center" onclick="startScan()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                EXECUTE SCAN_
+            </button>
+        </div>
+    </main>
 
     <script>
-        let selectedCharacters = [];
+        const cards = document.querySelectorAll('.char-card');
+        const executeBtn = document.getElementById('execute-btn');
+        const countDisplay = document.getElementById('selected-count');
 
-        function toggleSelect(element) {
-            const charName = element.getAttribute('data-name');
+        function updateExecuteButton() {
+            const selectedCards = document.querySelectorAll('.char-card.selected');
+            const count = selectedCards.length;
+            countDisplay.innerText = `${count}/${cards.length} 已选`;
+            
+            if (count > 0) {
+                executeBtn.disabled = false;
+                executeBtn.className = "bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold shadow-[0_4px_14px_0_rgba(239,68,68,0.39)] hover:shadow-[0_6px_20px_rgba(239,68,68,0.23)] hover:-translate-y-1 transition-all duration-200 flex items-center gap-2 cursor-pointer shrink-0 w-full sm:w-auto justify-center";
+            } else {
+                executeBtn.disabled = true;
+                executeBtn.className = "bg-slate-200 text-slate-400 px-8 py-3 rounded-full font-bold transition flex items-center gap-2 cursor-not-allowed shrink-0 w-full sm:w-auto justify-center";
+            }
+        }
+
+        function toggleSelection(element) {
             element.classList.toggle('selected');
-            
-            if (element.classList.contains('selected')) {
-                selectedCharacters.push(charName);
-            } else {
-                selectedCharacters = selectedCharacters.filter(name => name !== charName);
-            }
-            
-            const btn = document.getElementById('start-btn');
-            btn.disabled = selectedCharacters.length === 0;
-            if (selectedCharacters.length > 0) {
-                btn.innerText = `EXECUTE SCAN [ ${selectedCharacters.length} TARGETS ]_`;
-            } else {
-                btn.innerText = "EXECUTE SCAN_";
-            }
+            updateExecuteButton();
         }
 
-        async function startScan() {
-            if (selectedCharacters.length === 0) return;
-            
-            const statusMsg = document.getElementById('status-msg');
-            const btn = document.getElementById('start-btn');
-            
-            btn.disabled = true;
-            statusMsg.style.color = "#D91A2A";
-            statusMsg.innerText = "WARNING: SEQUENCE INITIATED. SWITCH TO GAME WINDOW IMMEDIATELY.";
+        function selectAll() {
+            cards.forEach(card => card.classList.add('selected'));
+            updateExecuteButton();
+        }
 
-            try {
-                const response = await fetch('/api/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ characters: selectedCharacters })
-                });
-                
-                const result = await response.json();
-                if(result.status === "success") {
-                    setTimeout(() => {
-                        statusMsg.style.color = "#1A4BD9";
-                        statusMsg.innerText = "SCANNING IN PROGRESS...";
-                    }, 3000);
+        function clearAll() {
+            cards.forEach(card => card.classList.remove('selected'));
+            updateExecuteButton();
+        }
+
+        function startScan() {
+            const selectedCards = document.querySelectorAll('.char-card.selected');
+            const selectedNames = Array.from(selectedCards).map(card => card.getAttribute('data-name'));
+
+            if (selectedNames.length === 0) return;
+
+            // ⭐️ 升级点 2：在用户准备确认启动的最后关头，弹窗中加入加粗高亮的红色紧急避险说明
+            Swal.fire({
+                title: '确认启动自动扫描?',
+                html: `
+                    <div class="text-left text-sm text-slate-600 space-y-2">
+                        <p>1. 脚本即将强行接管你的屏幕，并自动执行窗口居中、鼠标物理拖拽以及全量识别。</p>
+                        <p>2. <b>运行期间请绝对不要操作键盘和鼠标</b>，防止坐标偏移导致脚本误触桌面其他应用。</p>
+                        <div class="p-3 bg-red-50 rounded-xl border border-red-200 mt-4 text-red-700 font-bold flex items-start gap-2">
+                            <span class="text-base">🚨</span>
+                            <span>紧急安全避险：运行期间如发生任何异常乱点现象，请立刻按下键盘上的【F12】键！系统将瞬间强行切断一切脚本控制！</span>
+                        </div>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#94a3b8',
+                confirmButtonText: '已知晓安全热键，启动覆盖',
+                cancelButtonText: '取消',
+                background: '#ffffff',
+                customClass: {
+                    popup: 'rounded-2xl max-w-md',
+                    confirmButton: 'rounded-lg font-bold text-sm py-2 px-4',
+                    cancelButton: 'rounded-lg font-bold text-sm py-2 px-4'
                 }
-            } catch (error) {
-                statusMsg.innerText = "ERROR: CONNECTION FAILED.";
-                btn.disabled = false;
-            }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('/api/start', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ characters: selectedNames })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.status === 'success') {
+                            Swal.fire({
+                                title: '控制权交接完毕',
+                                text: '扫描已在后台全速推进，急停热键【F12】已进入监听状态。',
+                                icon: 'success',
+                                timer: 3000,
+                                showConfirmButton: false
+                            });
+                            clearAll();
+                        }
+                    })
+                    .catch((error) => {
+                        console.error('Error:', error);
+                        Swal.fire('通信失败', '无法连接至本地控制中枢', 'error');
+                    });
+                }
+            })
         }
+        
+        updateExecuteButton();
     </script>
 </body>
 </html>

@@ -11,7 +11,8 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 # GitHub API 地址 (请确保这三个变量在你的代码里是对的)
 REPO_OWNER = "twenty-f"
 REPO_NAME = "nikke-scanner-arcana"
-API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/assets/avatars"
+# ⭐️ 核心修改：在 URL 末尾追加 ?ref=main 来强制指定读取 main 分支
+API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/assets/avatars?ref=main"
 
 def check_and_update_avatars():
     print("🔄 正在检查指挥部最新的妮姬档案...")

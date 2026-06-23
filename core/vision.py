@@ -65,16 +65,21 @@ def find_image(screen, template_target, threshold=0.75, show_result=False):
         except:
             continue
 
-        # 对当前这张图片进行 20 次动态缩放盲扫
-        for scale in np.linspace(0.4, 1.5, 20):
+        # 对当前这张图片进行 20 次动态缩放盲扫（0.2x ~ 3.0x 全分辨率覆盖）
+        screen_h, screen_w = gray_screen.shape[:2]
+        for scale in np.linspace(0.2, 3.0, 20):
             width = int(gray_template.shape[1] * scale)
             height = int(gray_template.shape[0] * scale)
-            
-            # 尺寸合理性校验
-            if width > gray_screen.shape[1] or height > gray_screen.shape[0] or width == 0 or height == 0:
+
+            if width == 0 or height == 0:
                 continue
-                
+
             resized_template = cv2.resize(gray_template, (width, height))
+
+            # 尺寸越界锁：防止缩放后模板大于背景导致 matchTemplate 异常
+            if resized_template.shape[1] > screen_w or resized_template.shape[0] > screen_h:
+                continue
+
             result = cv2.matchTemplate(gray_screen, resized_template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             

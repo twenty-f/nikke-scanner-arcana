@@ -13,3 +13,5 @@ assets/temp/
 # 隐藏的环境配置
 .env
 .venv
+config.py
+user_settings.json

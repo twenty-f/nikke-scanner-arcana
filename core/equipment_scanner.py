@@ -5,9 +5,7 @@ import cv2
 import numpy as np
 from core.vision import find_image
 from core.capture import get_screen, capture_active_window
-from core.bot_client import send_to_bot
-from core.window_manager import get_window_rect
-
+from core.bot_client import upload_equipment_image
 # ==============================================================
 # 🎯 动态比例系数（橡皮筋算法校准区）
 # 因为你把上锚点换成了更高的“小队”，所以第一排离上锚点变远了，第二排离下锚点距离没变。
@@ -132,37 +130,19 @@ def scan_current_character_equipment(character_name):
             t10_img_path = os.path.join(temp_dir, f"{character_name}_T10_{part_name}.png")
             capture_active_window(t10_img_path) 
             t10_records.append(part_name)
-            send_to_bot(character_name, part_name, t10_img_path)
+            upload_equipment_image(character_name, part_name, t10_img_path)
         else:
             print(f"⏭️ [子任务] 不是 T10，跳过。")
             
         close_btn = find_image(get_screen(), "assets/btn_close.png", threshold=0.88, show_result=False)
-        
-        if close_btn:
-            cx = close_btn[0][0] + (close_btn[1] // 2)
-            cy = close_btn[0][1] + (close_btn[2] // 2)
-            
-            rect = get_window_rect()
-            is_safe_to_click = True
-            
-            if rect:
-                left, win_top, width, height = rect
-                if not (left <= cx <= left + width and win_top <= cy <= win_top + height):
-                    is_safe_to_click = False
 
-            if is_safe_to_click:
-                print(f"✖️ [子任务] 关闭【{part_name}】面板...")
-                pydirectinput.moveTo(int(cx), int(cy))
-                pydirectinput.click()
-                time.sleep(1)
-            else:
-                print("🛑 [安全系统拦截] 危险！识别到的【关闭按钮】在游戏窗口之外！已放弃鼠标点击，转用物理热键。")
-                pydirectinput.press('esc')
-                time.sleep(1.2)
+        if close_btn:
+            print(f"✖️ [子任务] 检测到【{part_name}】详情面板，发送 ESC 关闭...")
         else:
-            print("⚠️ 详情页没找到关闭按钮，按 ESC 尝试...")
-            pydirectinput.press('esc')
-            time.sleep(1.2)
+            print(f"⚠️ [子任务] 未检测到关闭按钮，仍发送 ESC 兜底关闭...")
+
+        pydirectinput.press('esc')
+        time.sleep(1.2)
             
     print("🔙 角色装备扫描完毕，正在返回全员列表页面...")
     pydirectinput.press('esc')

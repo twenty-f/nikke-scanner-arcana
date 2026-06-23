@@ -4,21 +4,30 @@ import keyboard
 import threading
 import webbrowser
 import time
+from pynput import keyboard
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from main_loop import start_main_auto_flow
 from core.updater import check_and_update_avatars
+from core.user_settings import get_real_base_path, get_token, save_token
 # ⭐️ 这里已经修正为最新的 force_bring_to_front
 from core.window_manager import force_bring_to_front
 
 # ==============================================================
 # 🚨 全局紧急停止开关：任何时候按下 F12，瞬间击杀整个 Python 进程
 # ==============================================================
-def emergency_stop():
-    print("\n\n🛑 [EMERGENCY STOP] 接收到 F12 急停指令！正在强制切断系统电源...")
-    os._exit(0) # 物理级终结进程，立刻释放键鼠
+# ⭐️ 使用 pynput 替代 keyboard，因为它拥有更高的系统事件穿透力
+def on_press(key):
+    try:
+        if key == keyboard.Key.f12:
+            print("\n🛑 [EMERGENCY STOP] 检测到 F12 急停指令！")
+            os._exit(0)
+    except Exception:
+        pass
 
-keyboard.add_hotkey('f12', emergency_stop)
-print("🛡️ 安全系统已上线：随时可按【F12】键紧急中止脚本！")
+# 启动一个独立的守护线程进行内核级监听
+listener = keyboard.Listener(on_press=on_press)
+listener.start()
+print("🛡️ 安全系统已升级为内核级监听：在任何窗口按下 F12 均可立刻中止脚本！")
 # ==============================================================
 
 def get_resource_path(relative_path):
@@ -51,19 +60,28 @@ def index():
 def serve_assets(filename):
     return send_from_directory(get_resource_path('assets'), filename)
 
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    return jsonify({"token": get_token()})
+
+
 @app.route('/api/start', methods=['POST'])
 def start_scan():
-    data = request.json
+    data = request.json or {}
     selected_characters = data.get('characters', [])
-    
+    token = (data.get('token') or '').strip()
+
     if not selected_characters:
         return jsonify({"status": "error", "message": "No targets selected"}), 400
 
-    print(f"🌐 [Web控制台] 收到扫描请求: {selected_characters}")
-    
-    # ⭐️ 这里也已经同步修正为调用 force_bring_to_front()
-    threading.Thread(target=lambda: (force_bring_to_front(), start_main_auto_flow(selected_characters)), daemon=True).start()
-    
+    save_token(token)
+    print(f"🌐 [Web控制台] 收到扫描请求: {selected_characters} | Token 已持久化至 {get_real_base_path()}")
+
+    threading.Thread(
+        target=lambda: (force_bring_to_front(), start_main_auto_flow(selected_characters)),
+        daemon=True,
+    ).start()
+
     return jsonify({"status": "success"})
 
 def restart_program():

@@ -2,6 +2,8 @@ import pydirectinput
 import time
 import os
 import keyboard
+import cv2
+import numpy as np
 from core.window_manager import get_window_rect, force_bring_to_front
 from core.equipment_scanner import scan_current_character_equipment
 from core.vision import find_image
@@ -85,17 +87,35 @@ def navigate_to_nikke_warehouse():
     print("\n🌐 [初始化] 正在智能检测当前游戏页面状态...")
     
     for attempt in range(3):
-        screen = get_screen()
+        screen_raw = get_screen()
+        if isinstance(screen_raw, str):
+            if not os.path.exists(screen_raw):
+                print(f"⚠️ [初始化] 截屏失败，正在重试... ({attempt+1}/3)")
+                time.sleep(2)
+                continue
+            screen = cv2.imdecode(np.fromfile(screen_raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+        else:
+            screen = screen_raw
+
+        if screen is None:
+            print(f"⚠️ [初始化] 截屏解码失败，正在重试... ({attempt+1}/3)")
+            time.sleep(2)
+            continue
+
+        h = screen.shape[0]
+        roi_y_offset = int(h * 0.5)
+
         # 1. 优先校验是否已在仓库
-        if find_image(screen, WAREHOUSE_FILTER_ICONS, threshold=0.8, show_result=False):
+        if find_image(screen, WAREHOUSE_FILTER_ICONS, threshold=0.75, show_result=False):
             print("✅ [初始化] 确认已在妮姬仓库页面。")
             return True
-            
-        # 2. 不在仓库则寻找底部妮姬按钮
-        btn_info = find_image(screen, BTN_NIKKE, threshold=0.65, show_result=False)
+
+        # 2. 不在仓库则仅在屏幕下半部寻找底部妮姬按钮
+        roi_screen = screen[roi_y_offset:, :]
+        btn_info = find_image(roi_screen, BTN_NIKKE, threshold=0.60, show_result=False)
         if btn_info:
             target_x = btn_info[0][0] + btn_info[1] // 2
-            target_y = btn_info[0][1] + btn_info[2] // 2
+            target_y = btn_info[0][1] + btn_info[2] // 2 + roi_y_offset
             print(f"🖱️ [初始化] 锁定【妮姬】按钮 ({target_x}, {target_y})，正在跳转...")
             pydirectinput.click(target_x, target_y)
             time.sleep(3) # 等待长页面的切换加载动画
@@ -107,14 +127,13 @@ def navigate_to_nikke_warehouse():
 
 def start_main_auto_flow(selected_characters):
     """
-    自动化执行总入口
+    自动化执行总入口：加入状态自愈与容错机制
     """
-    # 强制接管并窗口置顶（自动适配多显示器）
     if not force_bring_to_front():
         print("🛑 窗口初始化失败，流程终止。")
         return
 
-    # 智能导航到仓库
+    # 智能导航到仓库列表页
     if not navigate_to_nikke_warehouse():
         print("🛑 页面定位失败，请确保游戏界面已显示底部导航栏。")
         return
@@ -125,16 +144,27 @@ def start_main_auto_flow(selected_characters):
     for index, char_name in enumerate(selected_characters):
         print(f"\n🔄 ({index+1}/{total}) 处理干员: 【{char_name}】")
         
-        # 执行单个角色的处理流程
-        process_single_character(char_name)
+        # 1. 尝试处理该角色
+        success = process_single_character(char_name)
         
-        # 🌟 逻辑修复：判断是否为最后一个任务
+        # 2. 状态自愈：如果处理失败或找不到头像，执行一次“回退重连”
+        if not success:
+            print(f"⚠️ 未找到或处理失败【{char_name}】，执行状态自愈：回退至列表页...")
+            pydirectinput.press('esc')
+            time.sleep(1.5)
+            # 重新回到导航起点，确保后续翻页逻辑基于正确的列表页
+            navigate_to_nikke_warehouse()
+            # 如果你有 scroll_reset()，可以在这里调用，比如把滚动条拉回最顶端
+            # scroll_reset() 
+        
+        # 3. 逻辑修复：判断是否为最后一个任务
         if index == total - 1:
             print("\n🎉======================================\n✅ [自动化结束] 任务已全部完成！\n======================================\n")
             break
             
+        # 翻页与过渡逻辑 (如果有需要，这里可以继续翻页)
         time.sleep(1)
-
+        
 # 如果想在 main_loop 独立测试
 if __name__ == "__main__":
     print("🛡️ 请按 F12 键即可紧急停止脚本运行。")

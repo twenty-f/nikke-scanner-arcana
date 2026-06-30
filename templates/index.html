@@ -52,6 +52,21 @@
             opacity: 1;
             transform: scale(1);
         }
+        /* 云端已入库角标 */
+        .cloud-badge {
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.2s ease;
+            pointer-events: none;
+        }
+        .char-card.cloud-synced .cloud-badge {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .char-card.cloud-synced:not(.selected) {
+            border-color: #bfdbfe;
+            background-color: #f8fafc;
+        }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden text-slate-800">
@@ -96,6 +111,13 @@
             <div class="flex justify-between items-end mb-6 border-b border-slate-200 pb-3">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">扫描队列 <span class="text-slate-400 font-normal text-sm ml-2" id="selected-count">0/0 已选</span></h2>
+                    <p class="text-xs text-slate-500 mt-1">
+                        <span class="inline-flex items-center gap-1">
+                            <span class="inline-block w-2 h-2 rounded-full bg-sky-500"></span>
+                            蓝标 = 云端已有词条（可重新扫描以更新）
+                        </span>
+                        <span id="cloud-sync-hint" class="ml-2 text-slate-400"></span>
+                    </p>
                 </div>
                 <div class="flex gap-3">
                     <button onclick="selectAll()" class="text-sm text-slate-500 hover:text-slate-800 transition px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-md">全选</button>
@@ -106,13 +128,16 @@
             <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4" id="character-grid">
                 {% for char in characters %}
                 <div class="char-card bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-3 relative shadow-sm" data-name="{{ char.name }}" onclick="toggleSelection(this)">
+                    <div class="cloud-badge absolute -top-2 -left-2 bg-sky-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-md z-10" title="云端已有词条">
+                        云
+                    </div>
                     <div class="check-badge absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md z-10">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                     </div>
                     
                     <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-slate-100 shadow-inner">
-                        {% if char.cover %}
-                        <img src="/assets/avatars/{{ char.name }}/{{ char.cover }}" alt="{{ char.name }}" class="w-full h-full object-cover">
+                        {% if char.cover and char.avatar_folder %}
+                        <img src="/assets/avatars/{{ char.avatar_folder | urlencode }}/{{ char.cover | urlencode }}" alt="{{ char.name }}" class="w-full h-full object-cover">
                         {% else %}
                         <div class="w-full h-full bg-slate-200 flex items-center justify-center text-xl font-bold text-slate-400">{{ char.name[0] }}</div>
                         {% endif %}
@@ -127,19 +152,30 @@
             <div class="flex flex-col xl:flex-row items-start xl:items-center gap-4 xl:gap-6 w-full sm:flex-1">
                 <div class="flex flex-col gap-1 w-full sm:w-auto sm:min-w-[220px]">
                     <label for="api-token" class="text-xs font-semibold text-slate-500">阿卡中枢 API Token</label>
-                    <input
-                        type="password"
-                        id="api-token"
-                        placeholder="请输入阿卡 Bot Token"
-                        autocomplete="off"
-                        class="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 w-full sm:w-64 transition"
-                    >
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <input
+                            type="password"
+                            id="api-token"
+                            placeholder="请输入阿卡 Bot Token"
+                            autocomplete="off"
+                            class="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 w-full sm:w-64 transition"
+                        >
+                        <button
+                            type="button"
+                            id="test-token-btn"
+                            class="shrink-0 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-2 rounded-xl transition whitespace-nowrap"
+                            onclick="testToken()"
+                        >
+                            测试 Token
+                        </button>
+                    </div>
+                    <span id="token-test-hint" class="text-xs text-slate-400 min-h-[1rem]"></span>
                 </div>
 
                 <div class="flex flex-col xl:flex-row items-start xl:items-center gap-2 xl:gap-6">
                 <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span class="text-sm font-medium text-slate-600">系统就绪，等待执行指令</span>
+                    <div id="scan-status-dot" class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span id="scan-status-text" class="text-sm font-medium text-slate-600">系统就绪，等待执行指令</span>
                 </div>
                 
                 <div class="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200 shadow-inner animate-fade-in animate-duration-300">
@@ -163,6 +199,286 @@
         const executeBtn = document.getElementById('execute-btn');
         const countDisplay = document.getElementById('selected-count');
         const apiTokenInput = document.getElementById('api-token');
+        const testTokenBtn = document.getElementById('test-token-btn');
+        const tokenTestHint = document.getElementById('token-test-hint');
+        const scanStatusDot = document.getElementById('scan-status-dot');
+        const scanStatusText = document.getElementById('scan-status-text');
+        const cloudSyncHint = document.getElementById('cloud-sync-hint');
+        let scanPollTimer = null;
+        let cloudSyncTimer = null;
+        let cloudSyncRequestId = 0;
+
+        function clearCloudSyncedMarks() {
+            cards.forEach(card => {
+                card.classList.remove('cloud-synced');
+                card.removeAttribute('title');
+            });
+        }
+
+        function applyCloudSyncedMarks(characters) {
+            clearCloudSyncedMarks();
+            const byKey = {};
+            characters.forEach(item => {
+                byKey[item.local_key] = item;
+            });
+
+            cards.forEach(card => {
+                const key = card.getAttribute('data-name');
+                const info = byKey[key];
+                if (!info) {
+                    return;
+                }
+                card.classList.add('cloud-synced');
+                const slots = (info.slots || []).join('、');
+                card.setAttribute(
+                    'title',
+                    `云端已有 ${info.slot_count} 个部位词条：${slots}（重新扫描可更新）`
+                );
+            });
+
+            if (cloudSyncHint) {
+                cloudSyncHint.textContent = characters.length > 0
+                    ? `· 已同步 ${characters.length} 位干员云端数据`
+                    : '';
+            }
+        }
+
+        function syncCloudStats(options = {}) {
+            const { silent = false } = options;
+            const token = apiTokenInput.value.trim();
+            if (!token) {
+                clearCloudSyncedMarks();
+                if (cloudSyncHint) {
+                    cloudSyncHint.textContent = '';
+                }
+                return Promise.resolve(null);
+            }
+
+            const requestId = ++cloudSyncRequestId;
+            if (!silent && cloudSyncHint) {
+                cloudSyncHint.textContent = '· 正在拉取云端词条…';
+            }
+
+            return fetch('/api/cloud/stats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token }),
+            })
+                .then(async (response) => {
+                    const data = await response.json();
+                    if (requestId !== cloudSyncRequestId) {
+                        return null;
+                    }
+
+                    if (data.auth_error) {
+                        clearCloudSyncedMarks();
+                        if (cloudSyncHint) {
+                            cloudSyncHint.textContent = '· Token 无效或已过期';
+                        }
+                        if (!silent) {
+                            setScanStatusUI('error', '阿卡 Token 无效，无法拉取云端词条');
+                        }
+                        return data;
+                    }
+
+                    if (!data.success) {
+                        clearCloudSyncedMarks();
+                        if (cloudSyncHint) {
+                            cloudSyncHint.textContent = '· 云端同步失败';
+                        }
+                        return data;
+                    }
+
+                    applyCloudSyncedMarks(data.characters || []);
+                    if (!silent && !scanPollTimer) {
+                        setScanStatusUI('idle', `云端已入库 ${(data.characters || []).length} 位干员`);
+                    }
+                    return data;
+                })
+                .catch((error) => {
+                    console.error('Failed to sync cloud stats:', error);
+                    if (cloudSyncHint) {
+                        cloudSyncHint.textContent = '· 云端同步失败';
+                    }
+                    return null;
+                });
+        }
+
+        function scheduleCloudSync(delayMs = 600) {
+            if (cloudSyncTimer) {
+                clearTimeout(cloudSyncTimer);
+            }
+            cloudSyncTimer = setTimeout(() => {
+                syncCloudStats({ silent: true });
+            }, delayMs);
+        }
+
+        async function testToken() {
+            const token = apiTokenInput.value.trim();
+            if (!token) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: '未填写 Token',
+                    text: '请先在输入框中填入阿卡 API Token',
+                });
+                return;
+            }
+
+            const originalLabel = testTokenBtn.textContent;
+            testTokenBtn.disabled = true;
+            testTokenBtn.textContent = '验证中…';
+            testTokenBtn.className = 'shrink-0 text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl whitespace-nowrap cursor-wait';
+            if (tokenTestHint) {
+                tokenTestHint.textContent = '正在连接阿卡云端…';
+                tokenTestHint.className = 'text-xs text-slate-400 min-h-[1rem]';
+            }
+
+            try {
+                const response = await fetch('/api/token/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
+                });
+                const data = await response.json();
+
+                if (data.valid) {
+                    if (tokenTestHint) {
+                        tokenTestHint.textContent = '✓ Token 有效';
+                        tokenTestHint.className = 'text-xs text-green-600 min-h-[1rem]';
+                    }
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Token 有效',
+                        text: data.message || '可以正常访问阿卡云端词条库',
+                    });
+                    syncCloudStats({ silent: true });
+                    return;
+                }
+
+                const isAuth = data.auth_error;
+                if (tokenTestHint) {
+                    tokenTestHint.textContent = isAuth ? '✗ Token 无效或已过期' : '✗ 验证失败';
+                    tokenTestHint.className = 'text-xs text-red-600 min-h-[1rem]';
+                }
+                Swal.fire({
+                    icon: isAuth ? 'error' : 'warning',
+                    title: isAuth ? 'Token 无效' : '验证失败',
+                    text: data.message || '请检查 Token 是否正确，或稍后重试',
+                });
+            } catch (error) {
+                console.error('Token verify failed:', error);
+                if (tokenTestHint) {
+                    tokenTestHint.textContent = '✗ 网络请求失败';
+                    tokenTestHint.className = 'text-xs text-red-600 min-h-[1rem]';
+                }
+                Swal.fire({
+                    icon: 'error',
+                    title: '无法连接',
+                    text: '请确认控制台已启动且网络正常',
+                });
+            } finally {
+                testTokenBtn.disabled = false;
+                testTokenBtn.textContent = originalLabel;
+                testTokenBtn.className = 'shrink-0 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-2 rounded-xl transition whitespace-nowrap';
+            }
+        }
+
+        function setScanStatusUI(mode, text) {
+            const styles = {
+                idle: { dot: 'bg-green-500 animate-pulse', text: 'text-slate-600' },
+                running: { dot: 'bg-amber-500 animate-pulse', text: 'text-amber-700' },
+                success: { dot: 'bg-green-500', text: 'text-green-700' },
+                error: { dot: 'bg-red-500', text: 'text-red-700' },
+            };
+            const style = styles[mode] || styles.idle;
+            scanStatusDot.className = `w-2 h-2 rounded-full ${style.dot}`;
+            scanStatusText.className = `text-sm font-medium ${style.text}`;
+            scanStatusText.innerText = text;
+        }
+
+        function stopScanPolling() {
+            if (scanPollTimer) {
+                clearInterval(scanPollTimer);
+                scanPollTimer = null;
+            }
+        }
+
+        function updateScanProgress(data) {
+            if (data.status !== 'running') {
+                return;
+            }
+            const progress = data.total > 0
+                ? ` (${Math.min(data.processed, data.total)}/${data.total})`
+                : '';
+            const current = data.current_character ? ` · 当前：${data.current_character}` : '';
+            const phase = data.message || '扫描进行中';
+            setScanStatusUI('running', `${phase}${progress}${current}，请勿操作键鼠…`);
+        }
+
+        function showScanResultDialog(data) {
+            if (data.status === 'completed') {
+                Swal.fire({
+                    title: '扫描任务已完成',
+                    html: `
+                        <div class="text-left text-sm text-slate-600 space-y-2">
+                            <p>${data.message || '全部干员已处理完毕。'}</p>
+                            <p>请在终端查看 T10 识别与阿卡云端校验摘要；若有干员被跳过，请检查游戏界面后重新扫描。</p>
+                        </div>
+                    `,
+                    icon: 'success',
+                    confirmButtonColor: '#ef4444',
+                    confirmButtonText: '知道了',
+                    background: '#ffffff',
+                    customClass: { popup: 'rounded-2xl max-w-md', confirmButton: 'rounded-lg font-bold text-sm py-2 px-4' }
+                });
+                setScanStatusUI('success', '上次扫描已成功完成');
+                syncCloudStats({ silent: true });
+                return;
+            }
+
+            if (data.status === 'error') {
+                const isAuthError = data.error_type === 'api_auth';
+                Swal.fire({
+                    title: isAuthError ? '阿卡 API Token 失效' : '扫描任务异常结束',
+                    html: `
+                        <div class="text-left text-sm text-slate-600 space-y-3">
+                            <p class="font-semibold text-red-600">${data.message || '扫描过程中发生错误。'}</p>
+                            ${data.detail ? `<p class="text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 break-all">${data.detail}</p>` : ''}
+                            ${isAuthError ? '<p>请在下方输入有效的阿卡 Bot Token 后重新执行扫描。</p>' : '<p>请查看终端日志排查原因，修正后重新执行。</p>'}
+                        </div>
+                    `,
+                    icon: 'error',
+                    confirmButtonColor: '#ef4444',
+                    confirmButtonText: '知道了',
+                    background: '#ffffff',
+                    customClass: { popup: 'rounded-2xl max-w-md', confirmButton: 'rounded-lg font-bold text-sm py-2 px-4' }
+                });
+                setScanStatusUI('error', isAuthError ? '上次扫描因 Token 失效已中止' : '上次扫描异常结束');
+            }
+        }
+
+        function pollScanStatus() {
+            fetch('/api/scan/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateScanProgress(data);
+                    if (data.status === 'completed' || data.status === 'error') {
+                        stopScanPolling();
+                        showScanResultDialog(data);
+                        updateExecuteButton();
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to poll scan status:', error);
+                });
+        }
+
+        function startScanPolling() {
+            stopScanPolling();
+            setScanStatusUI('running', '扫描任务已启动，正在初始化…');
+            scanPollTimer = setInterval(pollScanStatus, 2000);
+            pollScanStatus();
+        }
 
         function loadSavedToken() {
             fetch('/api/config')
@@ -170,6 +486,7 @@
                 .then(data => {
                     if (data.token) {
                         apiTokenInput.value = data.token;
+                        syncCloudStats();
                     }
                 })
                 .catch((error) => {
@@ -177,10 +494,21 @@
                 });
         }
 
+        apiTokenInput.addEventListener('input', () => scheduleCloudSync(800));
+        apiTokenInput.addEventListener('blur', () => syncCloudStats({ silent: true }));
+
         function updateExecuteButton() {
             const selectedCards = document.querySelectorAll('.char-card.selected');
             const count = selectedCards.length;
             countDisplay.innerText = `${count}/${cards.length} 已选`;
+
+            const scanRunning = scanPollTimer !== null;
+            
+            if (scanRunning) {
+                executeBtn.disabled = true;
+                executeBtn.className = "bg-slate-200 text-slate-400 px-8 py-3 rounded-full font-bold transition flex items-center gap-2 cursor-not-allowed shrink-0 w-full sm:w-auto justify-center";
+                return;
+            }
             
             if (count > 0) {
                 executeBtn.disabled = false;
@@ -240,36 +568,73 @@
                 }
             }).then((result) => {
                 if (result.isConfirmed) {
-                    fetch('/api/start', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ characters: selectedNames, token: token })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if(data.status === 'success') {
-                            Swal.fire({
-                                title: '控制权交接完毕',
-                                text: '扫描已在后台全速推进，急停热键【F12】已进入监听状态。',
-                                icon: 'success',
-                                timer: 3000,
-                                showConfirmButton: false
-                            });
-                            clearAll();
-                        }
-                    })
-                    .catch((error) => {
-                        console.error('Error:', error);
-                        Swal.fire('通信失败', '无法连接至本地控制中枢', 'error');
-                    });
+                    const submitScan = (tokenValue) => {
+                        fetch('/api/start', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ characters: selectedNames, token: tokenValue })
+                        })
+                        .then(async (response) => {
+                            const data = await response.json();
+                            if (!response.ok) {
+                                Swal.fire('无法启动', data.message || '扫描任务未能启动', 'warning');
+                                return;
+                            }
+                            if (data.status === 'success') {
+                                Swal.fire({
+                                    title: '控制权交接完毕',
+                                    text: '扫描已在后台全速推进，急停热键【F12】已进入监听状态。',
+                                    icon: 'success',
+                                    timer: 2500,
+                                    showConfirmButton: false
+                                });
+                                clearAll();
+                                startScanPolling();
+                                updateExecuteButton();
+                                return;
+                            }
+                            Swal.fire('无法启动', data.message || '扫描任务未能启动', 'error');
+                        })
+                        .catch((error) => {
+                            console.error('Error:', error);
+                            Swal.fire('通信失败', '无法连接至本地控制中枢', 'error');
+                        });
+                    };
+
+                    if (token) {
+                        submitScan(token);
+                        return;
+                    }
+
+                    fetch('/api/config')
+                        .then(response => response.json())
+                        .then(data => submitScan((data.token || '').trim()))
+                        .catch((error) => {
+                            console.error('Failed to load saved token:', error);
+                            submitScan('');
+                        });
                 }
             })
         }
         
         loadSavedToken();
         updateExecuteButton();
+        fetch('/api/scan/status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'running') {
+                    startScanPolling();
+                } else if (data.status === 'completed') {
+                    setScanStatusUI('success', '上次扫描已成功完成');
+                } else if (data.status === 'error') {
+                    setScanStatusUI('error', data.error_type === 'api_auth'
+                        ? '上次扫描因 Token 失效已中止'
+                        : '上次扫描异常结束');
+                }
+            })
+            .catch(() => {});
     </script>
 </body>
 </html>

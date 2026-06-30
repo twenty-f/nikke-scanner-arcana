@@ -29,6 +29,9 @@ def load_settings():
 
 
 def save_token(token):
+    token = str(token).strip() if token else ""
+    if not token:
+        return
     settings = load_settings()
     settings["token"] = token
     settings_path = _get_settings_path()

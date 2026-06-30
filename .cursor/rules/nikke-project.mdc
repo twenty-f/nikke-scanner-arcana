@@ -1,0 +1,32 @@
+---
+description: Nikke Scanner 项目上下文；大改前读 docs/PROJECT_CHARTER.md
+globs: "**/*.{py,html,md,json}"
+alwaysApply: false
+---
+
+# Nikke Scanner Arcana · 项目 Rule
+
+## 接手顺序
+
+1. Read `docs/PROJECT_CHARTER.md`（选择与约束）
+2. Read `ARCHITECTURE_AND_STATUS.md`（模块与现状）
+3. 遵守全局 `engineering-intake` 与 `engineering-core` Skill
+
+## 模块（P1 拆分后）
+
+- 编排：`core/orchestrator.py`
+- 导航：`core/navigation/warehouse.py`、`screen_state.py`
+- 搜索：`core/search/panel.py`、`character.py`、`weapon_filter.py`、`filter.py`、`locators.py`
+- 坐标：`core/game_screen.py`
+- 兼容：`main_loop.py`（re-export）
+
+## 领域不变量（摘要）
+
+- 游戏窗口标题：`胜利女神：新的希望`
+- UI 两行：行1 筛选/Burst；行2 搜索框；**重置筛选**在执行放大镜下方
+- 坐标基于 **游戏窗口裁剪**（`core/game_screen.py`），禁止全屏比例混用
+- 多干员：上一位武器筛选后，下一位须重置筛选再搜索
+
+## 勿提交
+
+- `config.py`、`user_settings.json`、`.env`、`assets/temp/`、`build/`、`dist/`

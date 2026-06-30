@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import os
 
-def find_image(screen, template_target, threshold=0.75, show_result=False):
+def find_image(screen, template_target, threshold=0.75, show_result=False, min_scale=0.2, max_scale=3.0, silent=False):
     """
     通用多尺度图像识别模块（终极版）：
     1. 中文路径免乱码机制
@@ -65,9 +65,9 @@ def find_image(screen, template_target, threshold=0.75, show_result=False):
         except:
             continue
 
-        # 对当前这张图片进行 20 次动态缩放盲扫（0.2x ~ 3.0x 全分辨率覆盖）
+        # 对当前这张图片进行多尺度扫描（默认 0.2x ~ 3.0x，可按场景收窄）
         screen_h, screen_w = gray_screen.shape[:2]
-        for scale in np.linspace(0.2, 3.0, 20):
+        for scale in np.linspace(min_scale, max_scale, 20):
             width = int(gray_template.shape[1] * scale)
             height = int(gray_template.shape[0] * scale)
 
@@ -104,8 +104,83 @@ def find_image(screen, template_target, threshold=0.75, show_result=False):
         
         # 你的日志里出现过 "✨ 多模板盲扫：成功匹配到【尼恩：蓝色海洋】的皮肤图片"，
         # 为了找回那种感觉，我在这里加一句内部打印：
-        print(f"✨ 视觉模块底层回报：命中【{global_best_match['file_name']}】 | 缩放: {global_best_match['scale']:.2f}x | 相似度: {global_best_match['max_val']:.2f}")
+        if not silent:
+            pass  # 静默模式：命中细节不输出，减少终端噪音
         
         return (global_best_match['max_loc'], global_best_match['width'], global_best_match['height'])
         
     return None
+
+
+def find_leftmost_image(
+    screen,
+    template_target,
+    threshold=0.75,
+    min_scale=0.2,
+    max_scale=3.0,
+    max_rel_x=None,
+    silent=False,
+):
+    """
+    在 screen 中取所有超过 threshold 的匹配，返回最左侧的一个。
+    max_rel_x：匹配中心 x / screen 宽度 的上限（用于搜索开关等靠左 UI）。
+    """
+    if isinstance(screen, str):
+        if not os.path.exists(screen) or os.path.isdir(screen):
+            return None
+        screen = cv2.imdecode(np.fromfile(screen, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    if screen is None:
+        return None
+
+    try:
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY) if len(screen.shape) == 3 else screen
+    except Exception:
+        return None
+
+    templates_to_check = []
+    if os.path.isdir(template_target):
+        for file_name in os.listdir(template_target):
+            if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                templates_to_check.append(os.path.join(template_target, file_name))
+    elif os.path.exists(template_target):
+        templates_to_check.append(template_target)
+    else:
+        return None
+
+    candidates = []
+    screen_h, screen_w = gray_screen.shape[:2]
+
+    for t_path in templates_to_check:
+        template = cv2.imdecode(np.fromfile(t_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if template is None:
+            continue
+        try:
+            gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY) if len(template.shape) == 3 else template
+        except Exception:
+            continue
+
+        for scale in np.linspace(min_scale, max_scale, 20):
+            width = int(gray_template.shape[1] * scale)
+            height = int(gray_template.shape[0] * scale)
+            if width == 0 or height == 0:
+                continue
+            resized_template = cv2.resize(gray_template, (width, height))
+            if resized_template.shape[1] > screen_w or resized_template.shape[0] > screen_h:
+                continue
+
+            result = cv2.matchTemplate(gray_screen, resized_template, cv2.TM_CCOEFF_NORMED)
+            loc = np.where(result >= threshold)
+            for lx, ly in zip(loc[1], loc[0]):
+                score = float(result[ly, lx])
+                center_x = lx + width // 2
+                if max_rel_x is not None and center_x / screen_w > max_rel_x:
+                    continue
+                candidates.append((center_x, score, lx, ly, width, height))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: (item[0], -item[1]))
+    _, _, lx, ly, width, height = candidates[0]
+    return ((lx, ly), width, height)

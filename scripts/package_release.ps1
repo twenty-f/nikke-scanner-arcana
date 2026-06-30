@@ -5,6 +5,7 @@ Set-Location $Root
 
 Write-Host ">> PyInstaller build..."
 python -m PyInstaller NikkeScanner_Beta_v4.spec --noconfirm
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
 
 $OutDir = Join-Path $Root "dist\NikkeScanner_Beta_v4"
 if (-not (Test-Path $OutDir)) {
